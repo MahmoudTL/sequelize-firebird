@@ -101,7 +101,10 @@ import type {
       return joinSQLFragments([
         'SELECT',
         `TRIM(rf.RDB$FIELD_NAME) AS "Field",`,
-        `CASE f.RDB$FIELD_TYPE`,
+        // TRIM() around the whole CASE: Firebird infers a CASE's result as a fixed-length
+        // CHAR(N) sized to its longest branch ('DOUBLE PRECISION'), blank-padding every
+        // shorter branch to match.
+        `TRIM(CASE f.RDB$FIELD_TYPE`,
         `WHEN 7 THEN 'SMALLINT'`,
         `WHEN 8 THEN 'INTEGER'`,
         `WHEN 16 THEN 'BIGINT'`,
@@ -114,7 +117,7 @@ import type {
         `WHEN 37 THEN 'VARCHAR'`,
         `WHEN 261 THEN 'BLOB'`,
         `ELSE 'UNKNOWN'`,
-        `END AS "Type",`,
+        `END) AS "Type",`,
         `IIF(rf.RDB$NULL_FLAG = 1, 'NO', 'YES') AS "Null",`,
         `rf.RDB$DEFAULT_SOURCE AS "Default",`,
         `IIF(pk.RDB$FIELD_NAME IS NOT NULL, 'PRIMARY KEY', NULL) AS "Constraint"`,
