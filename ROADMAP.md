@@ -15,8 +15,8 @@ the officially supported Sequelize dialects, built as a standalone package per
   SQL-text `START TRANSACTION`/`COMMIT`/`ROLLBACK`)
 - Basic error mapping (unique constraint, foreign key constraint) from Firebird gdscodes
 - CI: [GitHub Actions workflow](./.github/workflows/ci.yml) running the unit + integration suite
-  against a `firebirdsql/firebird:3.0.12` Docker service on every push/PR (⚠️ just added, first
-  run not yet verified — see the Actions tab for current status)
+  against a `firebirdsql/firebird:3.0.12` Docker service on every push/PR — green as of
+  [a999874](https://github.com/MahmoudTL/sequelize-firebird/commit/a999874)
 - `DROP TABLE` / `CREATE TABLE` without `IF EXISTS`/`IF NOT EXISTS` (unsupported before Firebird 4)
 - Pagination via Firebird's native `ROWS n TO m` clause (not `OFFSET`/`FETCH`, which is Firebird 3+ only)
 
@@ -29,6 +29,12 @@ the officially supported Sequelize dialects, built as a standalone package per
   (`dialect.supports.select.dummyTable`) that is on `core`'s `main` branch but not yet in a
   published release — the dialect already declares it, so this will start working automatically
   once a compatible core version ships. Every other operation is unaffected.
+- node-firebird only fetches an `INSERT ... RETURNING` row through its `op_execute2` wire
+  operation for statements Firebird classifies as `isc_info_sql_stmt_exec_procedure`; on Firebird
+  3.0 a plain single-row `INSERT ... RETURNING` isn't classified that way, so the row never comes
+  back through the normal query path (confirmed working fine on 2.1.7, confirmed broken on 3.0
+  via CI). Worked around with a fallback `SELECT` by primary key when this happens (see
+  `FirebirdQuery#fetchRowByPrimaryKey`) — the real fix belongs upstream in node-firebird.
 
 ## Not yet done
 
@@ -49,11 +55,11 @@ the officially supported Sequelize dialects, built as a standalone package per
 | ----------------- | ----------- | ------------------------------------------------------------------------- |
 | 2.1                | ✅ Verified  | Full CRUD, transactions, sync — verified against a real 2.1.7 server      |
 | 2.5                | ❓ Untested  | Should work (same DDL/DML constraints as 2.1), not yet verified           |
-| 3.0                | ❓ Untested  | Has native `IDENTITY` columns and `OFFSET`/`FETCH` — not used yet, dialect currently targets the 2.1 lowest common denominator |
+| 3.0                | ✅ Verified  | Verified via CI against `firebirdsql/firebird:3.0.12`. Has native `IDENTITY` columns and `OFFSET`/`FETCH`, not used yet (dialect still targets the 2.1 lowest common denominator); required a `RETURNING` fallback, see "Known limitations" |
 | 4.0                | ❓ Untested  |                                                                             |
 | 5.0                | ❓ Untested  |                                                                             |
 
-Contributions testing against 2.5/3/4/5 are very welcome.
+Contributions testing against 2.5/4/5 are very welcome.
 
 ## How to help
 
