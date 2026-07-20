@@ -9,11 +9,30 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # firebirdsql/firebird only publishes stable tags from 3.0 onward; jacobalberty/firebird
+          # (archived, but still pullable) is the only source found for a 2.5 image. Both accept
+          # the SYSDBA password through different env vars, so the service sets both.
+          - firebird_version: '2.5'
+            image: jacobalberty/firebird:2.5.7-sc
+          - firebird_version: '3.0'
+            image: firebirdsql/firebird:3.0.12
+          - firebird_version: '4.0'
+            image: jacobalberty/firebird:v4.0.2
+          - firebird_version: '5.0'
+            image: jacobalberty/firebird:v5.0.0
+
+    name: Firebird ${{ matrix.firebird_version }}
+
     services:
       firebird:
-        image: firebirdsql/firebird:3.0.12
+        image: ${{ matrix.image }}
         env:
           FIREBIRD_ROOT_PASSWORD: masterkey
+          ISC_PASSWORD: masterkey
         ports:
           - 3050:3050
 
