@@ -6,23 +6,11 @@ This is a community-maintained dialect, developed following the same `AbstractDi
 
 ## Status
 
-Early stage. Verified against a real Firebird 2.1.7 server:
+Early stage, verified against a real Firebird 2.1.7 server: connection/auth, raw queries,
+`Model.sync()`, full CRUD via `RETURNING`, transactions, and basic error mapping.
 
-- Connection / authentication
-- Raw queries
-- `Model.sync()` — Firebird has no native `AUTO_INCREMENT`/`IDENTITY` before v3, so auto-increment columns are backed by a Firebird `GENERATOR`, fetched before each insert (see `FirebirdQueryInterface#getNextPrimaryKeyValue`)
-- Full CRUD (create / read / update / destroy) via `RETURNING`
-- Transactions — Firebird has no SQL-text `START TRANSACTION`/`COMMIT`/`ROLLBACK`, so transactions are driven through node-firebird's connection-level transaction API instead (same approach as the `mssql`/`db2`/`ibmi` dialects' `connectionTransactionMethods`)
-- Basic error mapping (unique constraint, foreign key constraint) from Firebird gdscodes
-
-Not yet done — see the [roadmap issue](../../issues) for details:
-
-- No unit test coverage matching the upstream dialects' per-dialect expected-SQL test suites
-- No CI (no Firebird service/Docker image wired up yet)
-- Savepoints not implemented
-- `RETURNING` only works for single-row UPDATE/DELETE (a Firebird limitation: multi-row `RETURNING` throws "multiple rows in singleton select")
-- Associations, migrations, schema introspection depth: untested
-- Only verified against Firebird 2.1 in TCP/server mode so far
+See [ROADMAP.md](./ROADMAP.md) for the full done/TODO breakdown, known limitations, and the
+Firebird version compatibility matrix.
 
 ## Installation
 
