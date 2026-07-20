@@ -82,8 +82,9 @@ export class FirebirdDialect extends AbstractDialect<
     jsonExtraction: undefined as any,
     uuidV1Generation: false, // UUID non natif
     globalTimeZoneConfig: true,
+    // Firebird has no "DROP COLUMN ... IF EXISTS" before Firebird 4.
     removeColumn: {
-      ifExists: true,
+      ifExists: false,
     },
     createSchema: {
       charset: true,

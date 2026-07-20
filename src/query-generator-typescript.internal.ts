@@ -3,6 +3,7 @@ import type {
     Expression,
     ListSchemasQueryOptions,
     ListTablesQueryOptions,
+    RemoveColumnQueryOptions,
     RemoveIndexQueryOptions,
     ShowConstraintsQueryOptions,
     TableOrModel,
@@ -12,6 +13,7 @@ import type {
   import type { EscapeOptions } from '@sequelize/core/_non-semver-use-at-your-own-risk_/abstract-dialect/query-generator-typescript.js';
   import {
     DROP_TABLE_QUERY_SUPPORTABLE_OPTIONS,
+    REMOVE_COLUMN_QUERY_SUPPORTABLE_OPTIONS,
     REMOVE_INDEX_QUERY_SUPPORTABLE_OPTIONS,
     TRUNCATE_TABLE_QUERY_SUPPORTABLE_OPTIONS,
   } from '@sequelize/core/_non-semver-use-at-your-own-risk_/abstract-dialect/query-generator-typescript.js';
@@ -60,6 +62,21 @@ import type {
       // Firebird has no "DROP TABLE IF EXISTS": FirebirdQueryInterface#dropTable swallows the
       // "table does not exist" error instead.
       return `DROP TABLE ${this.quoteTable(tableName)}`;
+    }
+
+    removeColumnQuery(tableName: TableOrModel, columnName: string, options?: RemoveColumnQueryOptions) {
+      if (options) {
+        rejectInvalidOptions(
+          'removeColumnQuery',
+          this.dialect,
+          REMOVE_COLUMN_QUERY_SUPPORTABLE_OPTIONS,
+          EMPTY_SET,
+          options,
+        );
+      }
+
+      // Firebird's syntax is "ALTER TABLE t DROP col_name" - no "COLUMN" keyword.
+      return `ALTER TABLE ${this.quoteTable(tableName)} DROP ${this.quoteIdentifier(columnName)}`;
     }
 
     listSchemasQuery(options?: ListSchemasQueryOptions) {
