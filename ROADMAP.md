@@ -23,8 +23,18 @@ the officially supported Sequelize dialects, built as a standalone package per
 - CI: [GitHub Actions workflow](./.github/workflows/ci.yml) running the unit + integration suite
   against a `firebirdsql/firebird:3.0.12` Docker service on every push/PR — green as of
   [a999874](https://github.com/MahmoudTL/sequelize-firebird/commit/a999874)
-- `DROP TABLE` / `CREATE TABLE` without `IF EXISTS`/`IF NOT EXISTS` (unsupported before Firebird 4)
+- `DROP TABLE` / `CREATE TABLE` / `removeColumn` without `IF EXISTS`/`IF NOT EXISTS` (unsupported
+  before Firebird 4 - `removeColumn` also used invalid `DROP COLUMN` syntax before; Firebird's is
+  `DROP col_name`, no `COLUMN` keyword)
 - Pagination via Firebird's native `ROWS n TO m` clause (not `OFFSET`/`FETCH`, which is Firebird 3+ only)
+- Associations (`hasMany`/`belongsTo`, nested `include`, skip-level associations) and foreign key
+  constraint generation/enforcement — verified against a real 3-level hierarchy
+  (see [borne-prix-sequelize-poc](https://github.com/MahmoudTL))
+- Migrations (`addColumn`/`changeColumn`/`renameColumn`/`removeColumn`) via `queryInterface`,
+  including `describeTable` and `showConstraints` (previously broken: `describeTableQuery`
+  queried the wrong system table entirely, and unquoted aliases meant Firebird upper-cased
+  `constraintName` to `CONSTRAINTNAME`, silently breaking the FK-drop-before-removeColumn
+  workaround)
 
 ## Known limitations
 
@@ -48,10 +58,13 @@ the officially supported Sequelize dialects, built as a standalone package per
 - Unit test coverage matching the depth of the official dialects' expected-SQL test suites
   (`packages/core/test/unit` in the main Sequelize repo has ~106 such files)
 - Savepoints
-- Associations edge cases (deep `include`s, `through` models, etc.) — untested
-- Migrations via `sequelize-cli` — untested
-- Schema introspection depth (`describeTable`, `showIndexes` accuracy) — minimally implemented,
-  not thoroughly verified
+- Associations edge cases: `belongsToMany`/`through` models, polymorphic associations — untested
+  (basic `hasMany`/`belongsTo` with nested `include` is verified, see "Done")
+- Migrations via `sequelize-cli` specifically (the underlying `queryInterface` methods are
+  verified, see "Done") — untested
+- `describeTable`'s `Type` doesn't report length/precision/scale (e.g. `VARCHAR`, not
+  `VARCHAR(100)`); `showIndexes` doesn't return the fuller shape (fields/unique/primary) other
+  dialects do
 - Embedded (in-process) Firebird mode — only TCP/server mode has been verified
 - BLOB / GEOMETRY / advanced data type coverage — untested beyond basic types (INTEGER, VARCHAR,
   CHAR, FLOAT, TIMESTAMP, BOOLEAN)
