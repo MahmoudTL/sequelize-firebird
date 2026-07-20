@@ -1,0 +1,70 @@
+{
+  "name": "sequelize-firebird",
+  "version": "0.1.0",
+  "description": "Firebird dialect for Sequelize v7 (@sequelize/core), built on node-firebird.",
+  "homepage": "https://github.com/MahmoudTL/sequelize-firebird",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MahmoudTL/sequelize-firebird.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MahmoudTL/sequelize-firebird/issues"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./lib/index.d.mts",
+        "default": "./lib/index.mjs"
+      },
+      "require": {
+        "types": "./lib/index.d.ts",
+        "default": "./lib/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "node ./build.mjs",
+    "test-typings": "tsc --noEmit --project tsconfig.json",
+    "test-unit": "mocha --require ts-node/register/transpile-only \"src/dialect.test.ts\"",
+    "test-integration": "mocha --require ts-node/register/transpile-only --timeout 15000 \"src/integration.test.ts\""
+  },
+  "keywords": [
+    "sequelize",
+    "firebird",
+    "orm",
+    "sql",
+    "database"
+  ],
+  "dependencies": {
+    "@sequelize/core": "^7.0.0-alpha.43",
+    "@sequelize/utils": "^7.0.0-alpha.43",
+    "dayjs": "^1.11.10",
+    "lodash": "^4.17.21",
+    "node-firebird": "^2.3.4",
+    "semver": "^7.6.0",
+    "wkx": "^0.5.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/lodash": "^4.17.14",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^18.11.11",
+    "chai": "^4.5.0",
+    "esbuild": "^0.17.19",
+    "fast-glob": "^3.3.2",
+    "mocha": "^11.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.4.0"
+  }
+}
