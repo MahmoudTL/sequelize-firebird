@@ -72,8 +72,46 @@ export class FirebirdQuery extends AbstractQuery {
     });
   }
 
-  _handleQueryResponse(rows) {
-    const rowCount = rows.length;
+  /**
+   * node-firebird only fetches a RETURNING row for statements Firebird classifies as
+   * `isc_info_sql_stmt_exec_procedure` (see node-firebird's connection.js#executeStatement) -
+   * plain INSERT/UPDATE/DELETE statements are classified differently on some Firebird/protocol
+   * combinations (observed against Firebird 3.0 over protocol 13+, working fine against 2.1.7),
+   * so their RETURNING data never comes back through the normal query path even though the
+   * statement itself succeeded. When that happens for a single-row insert with a known primary
+   * key, fetch the row back explicitly instead of reporting a spurious empty result.
+   */
+  async #fetchRowByPrimaryKey() {
+    if (!this.model) {
+      return null;
+    }
+
+    const modelDefinition = this.model.modelDefinition;
+    const pkAttributes = [...modelDefinition.primaryKeysAttributeNames];
+    if (pkAttributes.length === 0) {
+      return null;
+    }
+
+    const queryGenerator = this.sequelize.queryGenerator;
+    const conditions = [];
+    for (const attributeName of pkAttributes) {
+      const value = this.instance.get(attributeName, { raw: true });
+      if (value == null) {
+        return null;
+      }
+
+      const columnName = modelDefinition.getColumnName(attributeName);
+      conditions.push(`${queryGenerator.quoteIdentifier(columnName)} = ${queryGenerator.escape(value)}`);
+    }
+
+    const sql = `SELECT * FROM ${queryGenerator.quoteTable(this.model.table)} WHERE ${conditions.join(' AND ')}`;
+    const [rows] = await this.#execute(this.connection, sql, undefined);
+
+    return rows[0] ?? null;
+  }
+
+  async _handleQueryResponse(rows) {
+    let rowCount = rows.length;
 
     if (this.isShowIndexesQuery()) {
       return this.handleShowIndexesQuery(rows);
@@ -102,7 +140,13 @@ export class FirebirdQuery extends AbstractQuery {
     if (this.isInsertQuery() || this.isUpdateQuery() || this.isUpsertQuery()) {
       if (this.instance && this.instance.dataValues) {
         if (this.isInsertQuery() && !this.isUpsertQuery() && rowCount === 0) {
-          throw new EmptyResultError();
+          const fallbackRow = await this.#fetchRowByPrimaryKey();
+          if (fallbackRow) {
+            rows = [fallbackRow];
+            rowCount = 1;
+          } else {
+            throw new EmptyResultError();
+          }
         }
 
         if (rows[0]) {
