@@ -21,8 +21,13 @@ import type {
   import { joinSQLFragments } from '@sequelize/core/_non-semver-use-at-your-own-risk_/utils/join-sql-fragments.js';
   import { EMPTY_SET } from '@sequelize/core/_non-semver-use-at-your-own-risk_/utils/object.js';
   import { generateIndexName } from '@sequelize/core/_non-semver-use-at-your-own-risk_/utils/string.js';
+  import { createHash } from 'node:crypto';
   import type { FirebirdDialect } from './dialect.js';
   import { FirebirdQueryGeneratorInternal } from './query-generator.internal.js';
+
+  // Firebird identifiers are limited to 31 bytes before Firebird 4 (63 after) - well under the
+  // savepoint names Sequelize generates by default ("<36-char transaction uuid>-sp-<n>").
+  const MAX_IDENTIFIER_LENGTH = 31;
   
   const REMOVE_INDEX_QUERY_SUPPORTED_OPTIONS = new Set<keyof RemoveIndexQueryOptions>(['ifExists']);
   
@@ -62,6 +67,26 @@ import type {
       // Firebird has no "DROP TABLE IF EXISTS": FirebirdQueryInterface#dropTable swallows the
       // "table does not exist" error instead.
       return `DROP TABLE ${this.quoteTable(tableName)}`;
+    }
+
+    createSavepointQuery(savepointName: string) {
+      return `SAVEPOINT ${this.quoteIdentifier(this.#toFirebirdIdentifier(savepointName))}`;
+    }
+
+    rollbackSavepointQuery(savepointName: string) {
+      return `ROLLBACK TO SAVEPOINT ${this.quoteIdentifier(this.#toFirebirdIdentifier(savepointName))}`;
+    }
+
+    // Sequelize names savepoints "<36-char transaction uuid>-sp-<n>", well over Firebird's
+    // identifier length limit - hash names that are too long into a short, deterministic,
+    // Firebird-safe identifier instead (same input always maps to the same output, since
+    // createSavepointQuery/rollbackSavepointQuery are called separately with the same name).
+    #toFirebirdIdentifier(name: string): string {
+      if (name.length <= MAX_IDENTIFIER_LENGTH) {
+        return name;
+      }
+
+      return `SP_${createHash('sha1').update(name).digest('hex').slice(0, MAX_IDENTIFIER_LENGTH - 3)}`;
     }
 
     removeColumnQuery(tableName: TableOrModel, columnName: string, options?: RemoveColumnQueryOptions) {

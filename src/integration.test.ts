@@ -1,4 +1,4 @@
-import { Sequelize, DataTypes } from '@sequelize/core';
+import { Sequelize, DataTypes, TransactionNestMode } from '@sequelize/core';
 import { FirebirdDialect } from 'sequelize-firebird';
 import { expect } from 'chai';
 import * as path from 'path';
@@ -254,6 +254,55 @@ describe('FirebirdDialect Integration Tests', () => {
       console.error('Error during transaction test:', error);
       throw error;
     }
+  });
+
+  it('should support nested transactions (savepoints)', async function () {
+    this.timeout(15000);
+
+    const User = sequelize.define(
+      'User',
+      {
+        id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+        username: { type: DataTypes.STRING(100), allowNull: false },
+      },
+      { tableName: 'TEST_USERS_SAVEPOINT', timestamps: false },
+    );
+
+    try {
+      await sequelize.query('DROP TABLE TEST_USERS_SAVEPOINT');
+    } catch {
+      // Ignore if table doesn't exist
+    }
+
+    await User.sync({ force: true });
+
+    // A savepoint whose work is rolled back must not affect the parent transaction: only the
+    // outer row should survive. dialect.supports.savepoints defaults to true and
+    // createSavepointQuery/rollbackSavepointQuery aren't gated behind
+    // connectionTransactionMethods, so this exercises Sequelize's generic SAVEPOINT/ROLLBACK TO
+    // SAVEPOINT SQL running through FirebirdQuery's connection-transaction routing, with no
+    // Firebird-specific code at all.
+    await sequelize.transaction(async outer => {
+      await User.create({ username: 'outer' }, { transaction: outer });
+
+      let savepointError: unknown;
+      try {
+        // nestMode defaults to 'reuse' (share the parent transaction, no savepoint at all) -
+        // must ask for 'savepoint' explicitly to get SAVEPOINT/ROLLBACK TO SAVEPOINT isolation.
+        await sequelize.transaction({ transaction: outer, nestMode: TransactionNestMode.savepoint }, async inner => {
+          await User.create({ username: 'inner' }, { transaction: inner });
+          throw new Error('force rollback of the savepoint only');
+        });
+      } catch (error) {
+        savepointError = error;
+      }
+
+      expect(savepointError).to.be.an('error');
+    });
+
+    const usernames = (await User.findAll()).map(u => u.get('username')).sort();
+    expect(usernames).to.deep.equal(['outer']);
+    console.log('✓ Savepoint rolled back independently of the parent transaction:', usernames);
   });
 
   it('should perform bulk operations', async function () {

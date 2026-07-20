@@ -35,6 +35,12 @@ the officially supported Sequelize dialects, built as a standalone package per
   queried the wrong system table entirely, and unquoted aliases meant Firebird upper-cased
   `constraintName` to `CONSTRAINTNAME`, silently breaking the FK-drop-before-removeColumn
   workaround)
+- Savepoints (nested transactions via `sequelize.transaction({transaction, nestMode: 'savepoint'}, ...)`)
+  — `dialect.supports.savepoints` is `true` by default and Sequelize's generic `SAVEPOINT`/
+  `ROLLBACK TO SAVEPOINT` SQL needed no Firebird-specific query text, but Sequelize names
+  savepoints `<36-char transaction uuid>-sp-<n>`, well over Firebird's 31-byte identifier limit
+  (pre-Firebird-4) — names over the limit are hashed into a short, deterministic identifier
+  instead (see `createSavepointQuery`/`rollbackSavepointQuery`)
 
 ## Known limitations
 
@@ -57,7 +63,6 @@ the officially supported Sequelize dialects, built as a standalone package per
 
 - Unit test coverage matching the depth of the official dialects' expected-SQL test suites
   (`packages/core/test/unit` in the main Sequelize repo has ~106 such files)
-- Savepoints
 - Associations edge cases: `belongsToMany`/`through` models, polymorphic associations — untested
   (basic `hasMany`/`belongsTo` with nested `include` is verified, see "Done")
 - Migrations via `sequelize-cli` specifically (the underlying `queryInterface` methods are
