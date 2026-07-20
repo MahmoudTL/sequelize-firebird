@@ -77,10 +77,41 @@ import type {
     }
   
     describeTableQuery(tableName: TableOrModel) {
-      // Firebird utilise RDB$FIELDS pour décrire les colonnes
-      return `SELECT RDB$FIELD_NAME AS columnName, RDB$FIELD_TYPE AS fieldType, RDB$NULL_FLAG AS isNull
-              FROM RDB$FIELDS
-              WHERE RDB$RELATION_NAME = ${this.escapeTable(tableName)}`;
+      // RDB$RELATION_FIELDS links a table to its columns; the column's actual type lives on
+      // the domain/field definition in RDB$FIELDS (joined via RDB$FIELD_SOURCE). Primary key
+      // columns are found through RDB$RELATION_CONSTRAINTS + RDB$INDEX_SEGMENTS, the same way
+      // showConstraintsQuery below finds them.
+      return joinSQLFragments([
+        'SELECT',
+        `TRIM(rf.RDB$FIELD_NAME) AS "Field",`,
+        `CASE f.RDB$FIELD_TYPE`,
+        `WHEN 7 THEN 'SMALLINT'`,
+        `WHEN 8 THEN 'INTEGER'`,
+        `WHEN 16 THEN 'BIGINT'`,
+        `WHEN 10 THEN 'FLOAT'`,
+        `WHEN 27 THEN 'DOUBLE PRECISION'`,
+        `WHEN 12 THEN 'DATE'`,
+        `WHEN 13 THEN 'TIME'`,
+        `WHEN 35 THEN 'TIMESTAMP'`,
+        `WHEN 14 THEN 'CHAR'`,
+        `WHEN 37 THEN 'VARCHAR'`,
+        `WHEN 261 THEN 'BLOB'`,
+        `ELSE 'UNKNOWN'`,
+        `END AS "Type",`,
+        `IIF(rf.RDB$NULL_FLAG = 1, 'NO', 'YES') AS "Null",`,
+        `rf.RDB$DEFAULT_SOURCE AS "Default",`,
+        `IIF(pk.RDB$FIELD_NAME IS NOT NULL, 'PRIMARY KEY', NULL) AS "Constraint"`,
+        'FROM RDB$RELATION_FIELDS rf',
+        'JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE',
+        'LEFT JOIN (',
+        'SELECT s.RDB$FIELD_NAME, c.RDB$RELATION_NAME',
+        'FROM RDB$INDEX_SEGMENTS s',
+        'JOIN RDB$RELATION_CONSTRAINTS c ON c.RDB$INDEX_NAME = s.RDB$INDEX_NAME',
+        `WHERE c.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'`,
+        ') pk ON pk.RDB$FIELD_NAME = rf.RDB$FIELD_NAME AND pk.RDB$RELATION_NAME = rf.RDB$RELATION_NAME',
+        `WHERE rf.RDB$RELATION_NAME = ${this.escapeTable(tableName)}`,
+        'ORDER BY rf.RDB$FIELD_POSITION',
+      ]);
     }
   
     listTablesQuery(options?: ListTablesQueryOptions) {
@@ -107,17 +138,39 @@ import type {
     }
   
     showConstraintsQuery(tableName: TableOrModel, options?: ShowConstraintsQueryOptions) {
-      // Firebird utilise RDB$RELATION_CONSTRAINTS pour les contraintes
+      // One row per (constraint, column): showConstraints() (core) groups rows sharing the
+      // same constraintName back into a single entry with a columnNames array. Column aliases
+      // are double-quoted to preserve their exact camelCase - Firebird upper-cases unquoted
+      // identifiers, which would otherwise turn "constraintName" into an inaccessible
+      // CONSTRAINTNAME property.
       return joinSQLFragments([
-        'SELECT RDB$CONSTRAINT_NAME AS constraintName, RDB$CONSTRAINT_TYPE AS constraintType',
-        'FROM RDB$RELATION_CONSTRAINTS',
-        `WHERE RDB$RELATION_NAME = ${this.escapeTable(tableName)}`,
+        'SELECT',
+        `TRIM(rc.RDB$RELATION_NAME) AS "tableName",`,
+        `TRIM(rc.RDB$CONSTRAINT_NAME) AS "constraintName",`,
+        `TRIM(rc.RDB$CONSTRAINT_TYPE) AS "constraintType",`,
+        `TRIM(s.RDB$FIELD_NAME) AS "columnNames",`,
+        `TRIM(refc.RDB$RELATION_NAME) AS "referencedTableName",`,
+        `TRIM(refs.RDB$FIELD_NAME) AS "referencedColumnNames",`,
+        `rf.RDB$UPDATE_RULE AS "updateAction",`,
+        `rf.RDB$DELETE_RULE AS "deleteAction"`,
+        'FROM RDB$RELATION_CONSTRAINTS rc',
+        'LEFT JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = rc.RDB$INDEX_NAME',
+        'LEFT JOIN RDB$REF_CONSTRAINTS rf ON rf.RDB$CONSTRAINT_NAME = rc.RDB$CONSTRAINT_NAME',
+        'LEFT JOIN RDB$RELATION_CONSTRAINTS refc ON refc.RDB$CONSTRAINT_NAME = rf.RDB$CONST_NAME_UQ',
+        'LEFT JOIN RDB$INDEX_SEGMENTS refs',
+        'ON refs.RDB$INDEX_NAME = refc.RDB$INDEX_NAME AND refs.RDB$FIELD_POSITION = s.RDB$FIELD_POSITION',
+        `WHERE rc.RDB$RELATION_NAME = ${this.escapeTable(tableName)}`,
+        options?.constraintType ? `AND rc.RDB$CONSTRAINT_TYPE = ${this.escape(options.constraintType)}` : '',
+        options?.constraintName ? `AND rc.RDB$CONSTRAINT_NAME = ${this.escape(options.constraintName)}` : '',
+        options?.columnName ? `AND s.RDB$FIELD_NAME = ${this.escape(options.columnName.toUpperCase())}` : '',
       ]);
     }
 
     showIndexesQuery(tableName: TableOrModel) {
-      // Firebird utilise RDB$INDICES pour lister les index
-      return `SELECT RDB$INDEX_NAME AS indexName FROM RDB$INDICES WHERE RDB$RELATION_NAME = ${this.escapeTable(tableName)}`;
+      // Firebird utilise RDB$INDICES pour lister les index. Quoted alias to preserve
+      // camelCase (see showConstraintsQuery) - the fuller index-description shape
+      // (fields/unique/primary) other dialects return isn't implemented yet.
+      return `SELECT RDB$INDEX_NAME AS "indexName" FROM RDB$INDICES WHERE RDB$RELATION_NAME = ${this.escapeTable(tableName)}`;
     }
 
     private escapeTable(tableName: TableOrModel): string {

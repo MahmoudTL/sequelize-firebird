@@ -5,6 +5,7 @@ import {
   DatabaseError,
   EmptyResultError,
   ForeignKeyConstraintError,
+  QueryTypes,
   UniqueConstraintError,
   ValidationErrorItem,
 } from '@sequelize/core';
@@ -139,6 +140,20 @@ export class FirebirdQuery extends AbstractQuery {
 
     if (this.isSelectQuery()) {
       return this.handleSelectQuery(rows);
+    }
+
+    if (this.isDescribeQuery()) {
+      const result = {};
+      for (const row of rows) {
+        result[row.Field] = {
+          type: row.Type,
+          allowNull: row.Null === 'YES',
+          defaultValue: row.Default,
+          primaryKey: row.Constraint === 'PRIMARY KEY',
+        };
+      }
+
+      return result;
     }
 
     if (this.isShowOrDescribeQuery()) {
