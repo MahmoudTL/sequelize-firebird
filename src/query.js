@@ -44,8 +44,9 @@ export class FirebirdQuery extends AbstractQuery {
 
     let rows;
     let isSelect;
+    let affectedRows;
     try {
-      [rows, isSelect] = await this.#execute(connection, sql, parameters);
+      ({ rows, isSelect, affectedRows } = await this.#execute(connection, sql, parameters));
     } catch (error) {
       error.sql = sql;
       error.parameters = parameters;
@@ -54,21 +55,36 @@ export class FirebirdQuery extends AbstractQuery {
 
     complete();
 
-    return this._handleQueryResponse(rows);
+    return this._handleQueryResponse(rows, affectedRows);
   }
 
   #execute(connection, sql, parameters) {
     const executor = connection[FIREBIRD_TRANSACTION] ?? connection;
 
     return new Promise((resolve, reject) => {
-      executor.query(sql, parameters, (error, result, meta, isSelect) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+      executor.query(
+        sql,
+        parameters,
+        (error, result, meta, isSelect) => {
+          if (error) {
+            reject(error);
+            return;
+          }
 
-        resolve([normalizeRows(result, isSelect), Boolean(isSelect)]);
-      });
+          // withMeta wraps the result as { rows, affectedRows, recordCounts, ... } and asks
+          // Firebird directly (RECORDS_INFO) for how many rows a DML statement affected, instead
+          // of inferring it from how many rows came back — which is unreliable: RETURNING data
+          // is only ever fetched for statements Firebird classifies as
+          // isc_info_sql_stmt_exec_procedure, and plain INSERT/UPDATE/DELETE isn't always
+          // classified that way (observed: FB 2.1.7 does, FB 3.0 doesn't).
+          resolve({
+            rows: normalizeRows(result?.rows, isSelect),
+            isSelect: Boolean(isSelect),
+            affectedRows: result?.affectedRows ?? 0,
+          });
+        },
+        { withMeta: true },
+      );
     });
   }
 
@@ -105,13 +121,13 @@ export class FirebirdQuery extends AbstractQuery {
     }
 
     const sql = `SELECT * FROM ${queryGenerator.quoteTable(this.model.table)} WHERE ${conditions.join(' AND ')}`;
-    const [rows] = await this.#execute(this.connection, sql, undefined);
+    const { rows } = await this.#execute(this.connection, sql, undefined);
 
     return rows[0] ?? null;
   }
 
-  async _handleQueryResponse(rows) {
-    let rowCount = rows.length;
+  async _handleQueryResponse(rows, affectedRows) {
+    let rowCount = affectedRows;
 
     if (this.isShowIndexesQuery()) {
       return this.handleShowIndexesQuery(rows);
@@ -139,11 +155,10 @@ export class FirebirdQuery extends AbstractQuery {
 
     if (this.isInsertQuery() || this.isUpdateQuery() || this.isUpsertQuery()) {
       if (this.instance && this.instance.dataValues) {
-        if (this.isInsertQuery() && !this.isUpsertQuery() && rowCount === 0) {
-          const fallbackRow = await this.#fetchRowByPrimaryKey();
+        if (this.isInsertQuery() && !this.isUpsertQuery() && rows.length === 0) {
+          const fallbackRow = rowCount > 0 ? await this.#fetchRowByPrimaryKey() : null;
           if (fallbackRow) {
             rows = [fallbackRow];
-            rowCount = 1;
           } else {
             throw new EmptyResultError();
           }

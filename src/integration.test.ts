@@ -255,4 +255,76 @@ describe('FirebirdDialect Integration Tests', () => {
       throw error;
     }
   });
+
+  it('should perform bulk operations', async function () {
+    this.timeout(15000);
+
+    const User = sequelize.define(
+      'User',
+      {
+        id: {
+          type: DataTypes.INTEGER,
+          primaryKey: true,
+          autoIncrement: true,
+        },
+        username: {
+          type: DataTypes.STRING(100),
+          allowNull: false,
+        },
+        group: {
+          type: DataTypes.STRING(20),
+          allowNull: false,
+        },
+      },
+      {
+        tableName: 'TEST_USERS_BULK',
+        timestamps: false,
+      },
+    );
+
+    try {
+      await sequelize.query('DROP TABLE TEST_USERS_BULK');
+    } catch {
+      // Ignore if table doesn't exist
+    }
+
+    await User.sync({ force: true });
+
+    // BULK CREATE
+    const created = await User.bulkCreate([
+      { username: 'alice', group: 'a' },
+      { username: 'bob', group: 'a' },
+      { username: 'carol', group: 'b' },
+    ]);
+    expect(created).to.have.lengthOf(3);
+    // Each row must get its own auto-increment id: bulkCreate doesn't go through the same
+    // getNextPrimaryKeyValue call as a single create(), so this specifically exercises
+    // FirebirdQueryInterface#bulkInsert's own generator-based id population.
+    const ids = created.map(u => u.get('id'));
+    expect(ids).to.satisfy((values: unknown[]) => values.every(id => typeof id === 'number'));
+    expect(new Set(ids).size).to.equal(3);
+    console.log(
+      '✓ bulkCreate successful:',
+      created.map(u => u.get({ plain: true })),
+    );
+
+    // BULK UPDATE (affects 2 rows: group 'a')
+    const [affectedUpdateCount] = await User.update({ group: 'updated' }, { where: { group: 'a' } });
+    const groupARows = await User.findAll({ where: { group: 'updated' } });
+    expect(groupARows).to.have.lengthOf(2);
+    // affectedUpdateCount comes from Firebird's own RECORDS_INFO (see FirebirdQuery#execute's
+    // withMeta option), not from counting RETURNING rows - those aren't requested for bulk
+    // operations since Firebird only allows RETURNING on statements affecting a single row.
+    expect(affectedUpdateCount).to.equal(2);
+    console.log(`✓ bulkUpdate: reported ${affectedUpdateCount} affected, ${groupARows.length} rows actually match`);
+
+    // BULK DESTROY (affects 2 rows: group 'updated')
+    const affectedDestroyCount = await User.destroy({ where: { group: 'updated' } });
+    const remaining = await User.findAll();
+    expect(remaining).to.have.lengthOf(1);
+    expect(affectedDestroyCount).to.equal(2);
+    console.log(
+      `✓ bulkDestroy: reported ${affectedDestroyCount} affected, ${remaining.length} row(s) remain (expected 1)`,
+    );
+  });
 });

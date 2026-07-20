@@ -11,6 +11,12 @@ the officially supported Sequelize dialects, built as a standalone package per
 - `Model.sync()` (`CREATE TABLE`), with a Firebird `GENERATOR`-based workaround for
   auto-increment columns (no native `AUTO_INCREMENT`/`IDENTITY` before Firebird 3)
 - Full CRUD (create / read / update / destroy) via `RETURNING`
+- Bulk operations (`bulkCreate`/bulk `update`/bulk `destroy`) — Firebird has no multi-row
+  `INSERT ... VALUES (...), (...), (...)` syntax, so `bulkCreate` issues one `INSERT` per row
+  instead (each with its own generator-fetched id, since Sequelize's bulk path doesn't call
+  `getNextPrimaryKeyValue` per row the way a single `create()` does); affected-row counts for
+  bulk update/destroy come from Firebird's own `RECORDS_INFO`, not from counting `RETURNING`
+  rows (see "Known limitations")
 - Transactions, driven through node-firebird's connection-level transaction API (Firebird has no
   SQL-text `START TRANSACTION`/`COMMIT`/`ROLLBACK`)
 - Basic error mapping (unique constraint, foreign key constraint) from Firebird gdscodes
@@ -23,8 +29,9 @@ the officially supported Sequelize dialects, built as a standalone package per
 ## Known limitations
 
 - `RETURNING` only works for single-row `UPDATE`/`DELETE` — Firebird throws
-  "multiple rows in singleton select" for bulk operations, so bulk update/delete currently
-  return no row count
+  "multiple rows in singleton select" for bulk operations, so those never request it. Affected-row
+  counts are still accurate (fetched via Firebird's `RECORDS_INFO`, see `FirebirdQuery#execute`'s
+  `withMeta` option), but no row data comes back for bulk update/destroy
 - `sequelize.authenticate()` depends on an `@sequelize/core` feature
   (`dialect.supports.select.dummyTable`) that is on `core`'s `main` branch but not yet in a
   published release — the dialect already declares it, so this will start working automatically

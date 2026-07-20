@@ -144,6 +144,42 @@ export class FirebirdQueryInterface extends AbstractQueryInterface {
   }
 
   /**
+   * Firebird has no multi-row `INSERT ... VALUES (...), (...), (...)` syntax (each INSERT takes
+   * exactly one row), so bulkInsert issues one INSERT per record instead of the single
+   * multi-tuple statement the base implementation builds. This also fills in autoIncrement
+   * columns from the generator per row, since (unlike the single-record create() path, see
+   * model.js's use of getNextPrimaryKeyValue) Sequelize's bulk insert path never does.
+   *
+   * @override
+   */
+  async bulkInsert(tableName, records, options, attributes) {
+    const rawTableName = typeof tableName === 'string' ? tableName : tableName.tableName;
+    attributes ||= {};
+
+    const results = [];
+    for (const record of records) {
+      for (const key of Object.keys(attributes)) {
+        if (attributes[key].autoIncrement && record[key] == null) {
+          // eslint-disable-next-line no-await-in-loop
+          record[key] = await this.getNextPrimaryKeyValue(rawTableName, key);
+        }
+      }
+
+      const { query, bind } = this.queryGenerator.insertQuery(tableName, record, attributes, options);
+
+      // unlike bind, replacements are handled by QueryGenerator, not QueryRaw
+      const rowOptions = { ...options, type: QueryTypes.INSERT, bind };
+      delete rowOptions.replacements;
+
+      // eslint-disable-next-line no-await-in-loop
+      await this.sequelize.queryRaw(query, rowOptions);
+      results.push(record);
+    }
+
+    return results;
+  }
+
+  /**
    * A wrapper that fixes Firebird's inability to cleanly remove columns from existing tables if they have a foreign key constraint.
    *
    * @override
