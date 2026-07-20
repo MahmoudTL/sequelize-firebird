@@ -78,11 +78,11 @@ the officially supported Sequelize dialects, built as a standalone package per
 
 | Firebird version | Status      | Notes                                                                    |
 | ----------------- | ----------- | ------------------------------------------------------------------------- |
-| 2.1                | ✅ Verified  | Full CRUD, transactions, sync — verified against a real 2.1.7 server      |
-| 2.5                | 🔄 In CI    | `jacobalberty/firebird:2.5.7-sc` added to the CI matrix - see [ci.yml](./.github/workflows/ci.yml) for current status |
+| 2.1                | ✅ Verified  | Full CRUD, transactions, sync — verified against a real 2.1.7 server (local, not CI)      |
+| 2.5                | ✅ Verified  | Verified via CI against `jacobalberty/firebird:2.5.7-sc`                  |
 | 3.0                | ✅ Verified  | Verified via CI against `firebirdsql/firebird:3.0.12`. Has native `IDENTITY` columns and `OFFSET`/`FETCH`, not used yet (dialect still targets the 2.1 lowest common denominator); required a `RETURNING` fallback, see "Known limitations" |
-| 4.0                | 🔄 In CI    | `jacobalberty/firebird:v4.0.2` added to the CI matrix                      |
-| 5.0                | 🔄 In CI    | `jacobalberty/firebird:v5.0.0` added to the CI matrix                     |
+| 4.0                | ⚠️ Untestable | The only 4.0 image found, `jacobalberty/firebird:v4.0.2`, never responds to any Firebird wire-protocol connection attempt in GitHub Actions (2.5/3.0/5.0 all connect and pass in under 90s from the same workflow) — not in the CI matrix. Needs a different 4.0 image, or manual testing against a real 4.0 server, to actually verify |
+| 5.0                | ✅ Verified  | Verified via CI against `jacobalberty/firebird:v5.0.0`                    |
 
 `jacobalberty/firebird` is archived (no new updates) but its published tags remain pullable and
 are the only source found for 2.5/4.0/5.0 images; `firebirdsql/firebird` (actively maintained)
