@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      firebird:
+        image: firebirdsql/firebird:3.0.12
+        env:
+          FIREBIRD_ROOT_PASSWORD: masterkey
+        ports:
+          - 3050:3050
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm run test-unit
+
+      - name: Create Firebird test database
+        env:
+          FIREBIRD_DATABASE: /tmp/ci-test.fdb
+          FIREBIRD_ROOT_PASSWORD: masterkey
+        run: node scripts/create-ci-database.mjs
+
+      - name: Integration tests
+        env:
+          FIREBIRD_HOST: localhost
+          FIREBIRD_PORT: 3050
+          FIREBIRD_DATABASE: /tmp/ci-test.fdb
+          FIREBIRD_USER: sysdba
+          FIREBIRD_PASSWORD: masterkey
+        run: npm run test-integration

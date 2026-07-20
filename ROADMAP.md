@@ -14,6 +14,9 @@ the officially supported Sequelize dialects, built as a standalone package per
 - Transactions, driven through node-firebird's connection-level transaction API (Firebird has no
   SQL-text `START TRANSACTION`/`COMMIT`/`ROLLBACK`)
 - Basic error mapping (unique constraint, foreign key constraint) from Firebird gdscodes
+- CI: [GitHub Actions workflow](./.github/workflows/ci.yml) running the unit + integration suite
+  against a `firebirdsql/firebird:3.0.12` Docker service on every push/PR (⚠️ just added, first
+  run not yet verified — see the Actions tab for current status)
 - `DROP TABLE` / `CREATE TABLE` without `IF EXISTS`/`IF NOT EXISTS` (unsupported before Firebird 4)
 - Pagination via Firebird's native `ROWS n TO m` clause (not `OFFSET`/`FETCH`, which is Firebird 3+ only)
 
@@ -31,7 +34,6 @@ the officially supported Sequelize dialects, built as a standalone package per
 
 - Unit test coverage matching the depth of the official dialects' expected-SQL test suites
   (`packages/core/test/unit` in the main Sequelize repo has ~106 such files)
-- CI (GitHub Actions + a Firebird Docker service)
 - Savepoints
 - Associations edge cases (deep `include`s, `through` models, etc.) — untested
 - Migrations via `sequelize-cli` — untested
