@@ -37,7 +37,7 @@
     "prepare": "node ./build.mjs",
     "build": "node ./build.mjs",
     "test-typings": "tsc --noEmit --project tsconfig.json",
-    "test-unit": "mocha --require ts-node/register/transpile-only \"src/dialect.test.ts\"",
+    "test-unit": "mocha --require ts-node/register/transpile-only \"src/**/*.test.ts\" --ignore \"src/integration.test.ts\"",
     "test-integration": "mocha --require ts-node/register/transpile-only --timeout 15000 \"src/integration.test.ts\""
   },
   "keywords": [
