@@ -2,7 +2,11 @@
 
 Status: early / community preview. This dialect follows the same `AbstractDialect` structure as
 the officially supported Sequelize dialects, built as a standalone package per
-[sequelize/sequelize#18249](https://github.com/sequelize/sequelize/discussions/18249).
+[sequelize/sequelize#18249](https://github.com/sequelize/sequelize/discussions/18249). Confirmed by
+a Sequelize maintainer in [sequelize/sequelize#18269](https://github.com/sequelize/sequelize/issues/18269):
+the team isn't taking on new first-party dialects right now and is instead focused on making
+`AbstractDialect` a more complete extension point for third-party packages - so this stays a
+standalone package for the foreseeable future, by design rather than as a stopgap.
 
 ## Done
 
@@ -41,6 +45,8 @@ the officially supported Sequelize dialects, built as a standalone package per
   savepoints `<36-char transaction uuid>-sp-<n>`, well over Firebird's 31-byte identifier limit
   (pre-Firebird-4) — names over the limit are hashed into a short, deterministic identifier
   instead (see `createSavepointQuery`/`rollbackSavepointQuery`)
+- A first real unit test suite (`query-generator.test.ts`, `query.test.ts`) - no database needed,
+  locks in the SQL text and error-mapping behavior fixed while testing against real servers
 
 ## Known limitations
 
@@ -62,7 +68,8 @@ the officially supported Sequelize dialects, built as a standalone package per
 ## Not yet done
 
 - Unit test coverage matching the depth of the official dialects' expected-SQL test suites
-  (`packages/core/test/unit` in the main Sequelize repo has ~106 such files)
+  (`packages/core/test/unit` in the main Sequelize repo has ~106 such files) - a first pass exists
+  now (see "Done"), but it covers what's already been touched, not every query-generator method
 - Associations edge cases: `belongsToMany`/`through` models, polymorphic associations — untested
   (basic `hasMany`/`belongsTo` with nested `include` is verified, see "Done")
 - Migrations via `sequelize-cli` specifically (the underlying `queryInterface` methods are
