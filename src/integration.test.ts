@@ -376,4 +376,43 @@ describe('FirebirdDialect Integration Tests', () => {
       `✓ bulkDestroy: reported ${affectedDestroyCount} affected, ${remaining.length} row(s) remain (expected 1)`,
     );
   });
+
+  it('round-trips CHAR/VARCHAR text without truncation', async function () {
+    this.timeout(15000);
+
+    // Regression guard for a real bug found (and patched) in an older node-firebird release
+    // (2.3.4): SQLVarText#decode() recomputes a "character length" from the raw byte length
+    // divided by the charset's max byte width, then re-truncates the already-correctly-decoded
+    // string to that length - a step that's redundant at best and lossy at worst if the divisor
+    // doesn't match reality. Not reproducible against the current node-firebird dependency (see
+    // ROADMAP.md), but exercising long strings and multi-byte (accented) characters here so a
+    // regression would fail loudly instead of silently corrupting data.
+    const Doc = sequelize.define(
+      'Doc',
+      {
+        id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+        varcharCol: { type: DataTypes.STRING(255), allowNull: false },
+        charCol: { type: DataTypes.CHAR(50), allowNull: false },
+      },
+      { tableName: 'TEST_TEXT_ROUNDTRIP', timestamps: false },
+    );
+
+    try {
+      await sequelize.query('DROP TABLE TEST_TEXT_ROUNDTRIP');
+    } catch {
+      // Ignore if table doesn't exist
+    }
+
+    await Doc.sync({ force: true });
+
+    const longAscii = 'x'.repeat(255);
+    const accented = 'école élève café naïve Zürich Málaga 日本語テスト'.padEnd(50, '.');
+
+    const created = await Doc.create({ varcharCol: longAscii, charCol: accented.slice(0, 50) });
+    const found = await Doc.findByPk(created.get('id'));
+
+    expect(found?.get('varcharCol')).to.equal(longAscii);
+    expect(found?.get('charCol')?.toString().trimEnd()).to.equal(accented.slice(0, 50));
+    console.log('✓ CHAR/VARCHAR text round-tripped without truncation');
+  });
 });

@@ -49,7 +49,7 @@ await Promise.all([
 ]);
 
 try {
-  await exec('tsc --emitDeclarationOnly', {
+  await exec('tsc --emitDeclarationOnly --project tsconfig.build.json', {
     env: {
       ...process.env,
       PATH: `${process.env.PATH || ''}${path.delimiter}${path.join(rootDir, 'node_modules/.bin')}`,

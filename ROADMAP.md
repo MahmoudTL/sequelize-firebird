@@ -47,6 +47,17 @@ standalone package for the foreseeable future, by design rather than as a stopga
   instead (see `createSavepointQuery`/`rollbackSavepointQuery`)
 - A first real unit test suite (`query-generator.test.ts`, `query.test.ts`) - no database needed,
   locks in the SQL text and error-mapping behavior fixed while testing against real servers
+- A CHAR/VARCHAR text round-trip regression test (long strings, multi-byte/accented characters) -
+  guards against a real data-truncation bug found in an older node-firebird release (2.3.4):
+  `SQLVarText#decode()` recomputes a character length from the raw byte length divided by the
+  charset's byte width, then re-truncates the already-decoded string to that length. The same
+  code shape still exists in the node-firebird version this package depends on (2.14.0), but 3
+  targeted reproduction attempts against a real server (plain long VARCHAR, CHAR with an explicit
+  charset, and a deliberate charset/connection-encoding width mismatch) found no actual data loss -
+  the byte length Firebird reports already matches the column's own charset, so the recalculation
+  is redundant rather than lossy in practice. Not filed upstream since it isn't reproducible
+  against the current version; this test exists so a future node-firebird bump that reintroduces
+  the problem fails loudly instead of silently corrupting data
 
 ## Known limitations
 
