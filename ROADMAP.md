@@ -47,6 +47,22 @@ standalone package for the foreseeable future, by design rather than as a stopga
   instead (see `createSavepointQuery`/`rollbackSavepointQuery`)
 - A first real unit test suite (`query-generator.test.ts`, `query.test.ts`) - no database needed,
   locks in the SQL text and error-mapping behavior fixed while testing against real servers
+- BLOB support, found broken in two separate ways while investigating whether it was even worth
+  testing:
+  - `DataTypes.BLOB('long'/'medium'/'tiny')`'s default `toSql()` emits `LONGBLOB`/`MEDIUMBLOB`/
+    `TINYBLOB` - valid MySQL, rejected by Firebird at `CREATE TABLE` time (Firebird has one BLOB
+    type, no size variants). Fixed with a dialect-level `BLOB` override
+    (`data-types-overrides.ts`) that discards the size option (with a warning) and always emits
+    plain `BLOB`
+  - Reading a BLOB column back returned `undefined` instead of the stored value, silently -
+    unlike every other type, node-firebird hands back a BLOB column as a function that must be
+    called to get an `EventEmitter` streaming the actual bytes, resolved within the same
+    transaction the query ran on (no transaction argument at all if none was active - passing the
+    plain connection there fails with "Invalid transaction handle"). `FirebirdQuery#execute` now
+    resolves any such function-valued fields into real `Buffer`s before handing rows back to
+    Sequelize. Also removed `_internal/data-types-db.ts`: a `registerDataTypeParser`-based BLOB
+    parser that was never actually wired into any code path and, on inspection, called a
+    non-existent `.buffer()` method - dead code, not a real fix
 - A CHAR/VARCHAR text round-trip regression test (long strings, multi-byte/accented characters) -
   guards against a real data-truncation bug found in an older node-firebird release (2.3.4):
   `SQLVarText#decode()` recomputes a character length from the raw byte length divided by the
@@ -89,8 +105,8 @@ standalone package for the foreseeable future, by design rather than as a stopga
   `VARCHAR(100)`); `showIndexes` doesn't return the fuller shape (fields/unique/primary) other
   dialects do
 - Embedded (in-process) Firebird mode — only TCP/server mode has been verified
-- BLOB / GEOMETRY / advanced data type coverage — untested beyond basic types (INTEGER, VARCHAR,
-  CHAR, FLOAT, TIMESTAMP, BOOLEAN)
+- GEOMETRY / advanced data type coverage beyond basic types (INTEGER, VARCHAR, CHAR, FLOAT,
+  TIMESTAMP, BOOLEAN, BLOB - the latter verified and fixed, see "Done")
 
 ## Firebird version compatibility matrix
 

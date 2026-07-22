@@ -37,6 +37,53 @@ function normalizeRows(rawResult, isSelect) {
   return Array.isArray(rawResult) ? rawResult : [rawResult];
 }
 
+// node-firebird doesn't return BLOB column values directly: each one comes back as a function
+// that must be called to get an EventEmitter streaming the actual bytes (see "Reading Blobs" in
+// node-firebird's README) - unlike every other type, which arrives as a plain, already-decoded
+// value. Reading it requires the same transaction the query itself ran on: when one is active
+// (FIREBIRD_TRANSACTION), the blob function must be called with that transaction explicitly, or
+// Firebird rejects it ("Invalid transaction handle"); with no explicit transaction, it must be
+// called with no transaction argument at all - passing the plain connection there fails the same
+// way.
+function readBlobField(blobField, transaction) {
+  return new Promise((resolve, reject) => {
+    const onBlob = (error, name, stream) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      const chunks = [];
+      stream.on('data', chunk => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    };
+
+    if (transaction) {
+      blobField(transaction, onBlob);
+    } else {
+      blobField(onBlob);
+    }
+  });
+}
+
+function resolveBlobFields(transaction, rows) {
+  const pendingReads = [];
+  for (const row of rows) {
+    for (const columnName of Object.keys(row)) {
+      if (typeof row[columnName] === 'function') {
+        pendingReads.push(
+          readBlobField(row[columnName], transaction).then(buffer => {
+            row[columnName] = buffer;
+          }),
+        );
+      }
+    }
+  }
+
+  return pendingReads.length > 0 ? Promise.all(pendingReads) : Promise.resolve();
+}
+
 export class FirebirdQuery extends AbstractQuery {
   async run(sql, parameters) {
     const { connection } = this;
@@ -60,7 +107,8 @@ export class FirebirdQuery extends AbstractQuery {
   }
 
   #execute(connection, sql, parameters) {
-    const executor = connection[FIREBIRD_TRANSACTION] ?? connection;
+    const transaction = connection[FIREBIRD_TRANSACTION];
+    const executor = transaction ?? connection;
 
     return new Promise((resolve, reject) => {
       executor.query(
@@ -72,17 +120,23 @@ export class FirebirdQuery extends AbstractQuery {
             return;
           }
 
+          const rows = normalizeRows(result?.rows, isSelect);
+
           // withMeta wraps the result as { rows, affectedRows, recordCounts, ... } and asks
           // Firebird directly (RECORDS_INFO) for how many rows a DML statement affected, instead
           // of inferring it from how many rows came back — which is unreliable: RETURNING data
           // is only ever fetched for statements Firebird classifies as
           // isc_info_sql_stmt_exec_procedure, and plain INSERT/UPDATE/DELETE isn't always
           // classified that way (observed: FB 2.1.7 does, FB 3.0 doesn't).
-          resolve({
-            rows: normalizeRows(result?.rows, isSelect),
-            isSelect: Boolean(isSelect),
-            affectedRows: result?.affectedRows ?? 0,
-          });
+          resolveBlobFields(transaction, rows)
+            .then(() =>
+              resolve({
+                rows,
+                isSelect: Boolean(isSelect),
+                affectedRows: result?.affectedRows ?? 0,
+              }),
+            )
+            .catch(reject);
         },
         { withMeta: true },
       );

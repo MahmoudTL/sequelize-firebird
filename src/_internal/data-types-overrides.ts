@@ -1,4 +1,4 @@
-import type { BindParamOptions, GeoJson } from '@sequelize/core';
+import type { AbstractDialect, BindParamOptions, GeoJson } from '@sequelize/core';
 import type { AcceptedDate } from '@sequelize/core/_non-semver-use-at-your-own-risk_/abstract-dialect/data-types.js';
 import * as BaseTypes from '@sequelize/core/_non-semver-use-at-your-own-risk_/abstract-dialect/data-types.js';
 import { isValidTimeZone } from '@sequelize/core/_non-semver-use-at-your-own-risk_/utils/dayjs.js';
@@ -65,6 +65,26 @@ export class DATE extends BaseTypes.DATE {
 export class UUID extends BaseTypes.UUID {
   toSql() {
     return 'CHAR(36)';
+  }
+}
+
+export class BLOB extends BaseTypes.BLOB {
+  protected _checkOptionSupport(dialect: AbstractDialect) {
+    super._checkOptionSupport(dialect);
+
+    if (this.options.length) {
+      // Firebird has a single BLOB type (no TINYBLOB/MEDIUMBLOB/LONGBLOB variants like MySQL) -
+      // the default toSql() would otherwise emit those MySQL-only keywords, which Firebird
+      // rejects at CREATE TABLE time.
+      dialect.warnDataTypeIssue(
+        `${dialect.name} does not support BLOB with a size option. Plain BLOB will be used instead.`,
+      );
+      this.options.length = undefined;
+    }
+  }
+
+  toSql() {
+    return 'BLOB';
   }
 }
 

@@ -415,4 +415,65 @@ describe('FirebirdDialect Integration Tests', () => {
     expect(found?.get('charCol')?.toString().trimEnd()).to.equal(accented.slice(0, 50));
     console.log('✓ CHAR/VARCHAR text round-tripped without truncation');
   });
+
+  it('round-trips a plain BLOB (Buffer)', async function () {
+    this.timeout(15000);
+
+    const Attachment = sequelize.define(
+      'Attachment',
+      {
+        id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+        data: { type: DataTypes.BLOB, allowNull: false },
+      },
+      { tableName: 'TEST_BLOB', timestamps: false },
+    );
+
+    try {
+      await sequelize.query('DROP TABLE TEST_BLOB');
+    } catch {
+      // Ignore if table doesn't exist
+    }
+
+    await Attachment.sync({ force: true });
+
+    const payload = Buffer.from([0, 1, 2, 253, 254, 255, ...Buffer.from('hello blob')]);
+    const created = await Attachment.create({ data: payload });
+    const found = await Attachment.findByPk(created.get('id'));
+
+    expect(Buffer.isBuffer(found?.get('data'))).to.equal(true);
+    expect((found?.get('data') as Buffer).equals(payload)).to.equal(true);
+    console.log('✓ BLOB round-tripped correctly');
+  });
+
+  it('falls back to plain BLOB for DataTypes.BLOB("long"/"medium"/"tiny")', async function () {
+    this.timeout(15000);
+
+    // @sequelize/core's default BLOB#toSql() emits 'LONGBLOB'/'MEDIUMBLOB'/'TINYBLOB' for the
+    // size hint - valid MySQL, not Firebird (which has a single BLOB type). The dialect's own
+    // BLOB override (data-types-overrides.ts) discards the size option and always emits plain
+    // 'BLOB' instead of letting invalid DDL reach the server.
+    const Big = sequelize.define(
+      'Big',
+      {
+        id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+        data: { type: DataTypes.BLOB('long'), allowNull: false },
+      },
+      { tableName: 'TEST_BLOB_LONG', timestamps: false },
+    );
+
+    try {
+      await sequelize.query('DROP TABLE TEST_BLOB_LONG');
+    } catch {
+      // Ignore if table doesn't exist
+    }
+
+    await Big.sync({ force: true });
+
+    const payload = Buffer.from('a value stored in a DataTypes.BLOB("long") column');
+    const created = await Big.create({ data: payload });
+    const found = await Big.findByPk(created.get('id'));
+
+    expect((found?.get('data') as Buffer).equals(payload)).to.equal(true);
+    console.log('✓ DataTypes.BLOB("long") mapped to plain BLOB and round-tripped correctly');
+  });
 });
